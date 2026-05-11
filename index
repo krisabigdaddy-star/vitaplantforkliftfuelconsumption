@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forklift Fuel Dashboard</title>
+    
+    <!-- Tailwind CSS for Modern UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SheetJS for Excel/CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Chart.js for Data Visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- html2pdf for PDF Export (Supports Thai Fonts natively via canvas) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- SweetAlert2 for beautiful alerts -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Prompt', sans-serif; background-color: #f8fafc; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            border-radius: 1rem;
+        }
+        /* Custom Scrollbar for table */
+        .table-container::-webkit-scrollbar { width: 6px; height: 6px; }
+        .table-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- Top Navigation -->
+    <nav class="bg-indigo-600 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-white/20 p-2 rounded-lg">
+                        <i class="fa-solid fa-gas-pump text-xl"></i>
+                    </div>
+                    <span class="font-semibold text-lg md:text-xl tracking-wide uppercase hidden sm:block">VITA PLANT - FORK LIFT FUEL CONSUMPTION</span>
+                    <span class="font-semibold text-lg tracking-wide uppercase sm:hidden">VITA PLANT</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <!-- Hidden File Input -->
+                    <input type="file" id="fileUpload" class="hidden" accept=".xlsx, .xls, .csv">
+                    <button onclick="document.getElementById('fileUpload').click()" class="bg-white text-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg font-medium transition-all shadow-sm flex items-center gap-2">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> อัปโหลดไฟล์ Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        
+        <!-- Header & Filters -->
+        <div class="glass-card p-6 flex flex-col md:flex-row justify-between items-center gap-4 relative z-[100]">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">แดชบอร์ดสรุปการใช้น้ำมัน (Forklift)</h1>
+                <p class="text-sm text-slate-500 mt-1" id="lastUpdateText">ข้อมูลอัปเดตล่าสุด: กำลังโหลด...</p>
+            </div>
+            
+            <div class="flex flex-wrap gap-3 relative" id="filtersContainer">
+                <!-- Custom Multi-select for Year -->
+                <div class="relative filter-dropdown">
+                    <button onclick="toggleMenu('menu-year')" class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2.5 flex items-center justify-between min-w-[140px] hover:bg-slate-100 transition-colors">
+                        <span class="truncate">ปี: <span id="lbl-year" class="font-medium text-indigo-600">ทั้งหมด</span></span>
+                        <i class="fa-solid fa-chevron-down text-xs ml-2 text-slate-400"></i>
+                    </button>
+                    <div id="menu-year" class="filter-menu hidden absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] max-h-60 overflow-y-auto p-2">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- Custom Multi-select for Month -->
+                <div class="relative filter-dropdown">
+                    <button onclick="toggleMenu('menu-month')" class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2.5 flex items-center justify-between min-w-[140px] hover:bg-slate-100 transition-colors">
+                        <span class="truncate">เดือน: <span id="lbl-month" class="font-medium text-indigo-600">ทั้งหมด</span></span>
+                        <i class="fa-solid fa-chevron-down text-xs ml-2 text-slate-400"></i>
+                    </button>
+                    <div id="menu-month" class="filter-menu hidden absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] max-h-60 overflow-y-auto p-2">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- Custom Multi-select for Forklift -->
+                <div class="relative filter-dropdown">
+                    <button onclick="toggleMenu('menu-forklift')" class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2.5 flex items-center justify-between min-w-[160px] hover:bg-slate-100 transition-colors">
+                        <span class="truncate">รถ: <span id="lbl-forklift" class="font-medium text-indigo-600">ทั้งหมด</span></span>
+                        <i class="fa-solid fa-chevron-down text-xs ml-2 text-slate-400"></i>
+                    </button>
+                    <div id="menu-forklift" class="filter-menu hidden absolute right-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] max-h-60 overflow-y-auto p-2">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Total Received -->
+            <div class="glass-card p-6 flex items-center gap-4 border-l-4 border-emerald-500">
+                <div class="bg-emerald-100 text-emerald-600 p-4 rounded-full text-2xl w-14 h-14 flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-down-to-line"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">รับน้ำมันรวม (ลิตร)</p>
+                    <h3 class="text-2xl font-bold text-slate-800" id="sumReceive">0.00</h3>
+                </div>
+            </div>
+            <!-- Total Issued -->
+            <div class="glass-card p-6 flex items-center gap-4 border-l-4 border-rose-500">
+                <div class="bg-rose-100 text-rose-600 p-4 rounded-full text-2xl w-14 h-14 flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">จ่ายน้ำมันรวม (ลิตร)</p>
+                    <h3 class="text-2xl font-bold text-slate-800" id="sumIssue">0.00</h3>
+                </div>
+            </div>
+            <!-- Current Balance -->
+            <div class="glass-card p-6 flex items-center gap-4 border-l-4 border-blue-500">
+                <div class="bg-blue-100 text-blue-600 p-4 rounded-full text-2xl w-14 h-14 flex items-center justify-center">
+                    <i class="fa-solid fa-droplet"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">ยอดคงเหลือล่าสุด (ลิตร)</p>
+                    <h3 class="text-2xl font-bold text-slate-800" id="currentBalance">0.00</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Area -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Monthly Bar Chart -->
+            <div class="glass-card p-6 lg:col-span-2">
+                <h3 class="text-lg font-semibold text-slate-800 mb-4">ปริมาณรับ-จ่ายน้ำมัน รายเดือน</h3>
+                <div class="relative h-72 w-full">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+            <!-- Forklift Usage Doughnut Chart -->
+            <div class="glass-card p-6 lg:col-span-1">
+                <h3 class="text-lg font-semibold text-slate-800 mb-4">สัดส่วนการใช้น้ำมันแต่ละคัน</h3>
+                <div class="relative h-72 w-full flex items-center justify-center">
+                    <canvas id="forkliftChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ranking Chart Area (NEW) -->
+        <div class="glass-card p-6">
+            <h3 class="text-lg font-semibold text-slate-800 mb-4"><i class="fa-solid fa-ranking-star text-amber-500 mr-2"></i>Ranking การใช้น้ำมันของรถแต่ละคัน</h3>
+            <div class="relative h-80 w-full">
+                <canvas id="rankingChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Monthly Summary Table Area (NEW) -->
+        <div class="glass-card p-0 overflow-hidden mb-2">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-xl">
+                <h3 class="text-lg font-semibold text-slate-800">ตารางสรุปยอดรับ-จ่าย รายเดือน</h3>
+                <button onclick="exportSummaryToPDF()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-sm flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-file-pdf"></i> Export สรุปรายเดือน
+                </button>
+            </div>
+            
+            <!-- Wrapper for PDF Export (Summary) -->
+            <div id="pdfSummaryArea" class="bg-white">
+                <div class="p-6 hidden" id="pdfSummaryHeader">
+                    <h2 class="text-xl font-bold text-center mb-2">รายงานสรุปยอดรับ-จ่ายน้ำมัน รายเดือน</h2>
+                    <p class="text-center text-sm text-gray-500 mb-4" id="pdfSummaryFilterInfo"></p>
+                </div>
+                
+                <div class="table-container overflow-x-auto">
+                    <table class="w-full text-sm text-left text-slate-600">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 whitespace-nowrap">เดือน - ปี</th>
+                                <th scope="col" class="px-6 py-3 text-right text-emerald-600">รับน้ำมันรวม (ลิตร)</th>
+                                <th scope="col" class="px-6 py-3 text-right text-rose-600">จ่ายน้ำมันรวม (ลิตร)</th>
+                                <th scope="col" class="px-6 py-3 text-right text-blue-600">ยอดคงเหลือ (ลิตร)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody">
+                            <!-- Data rows will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Area -->
+        <div class="glass-card p-0 overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-xl">
+                <h3 class="text-lg font-semibold text-slate-800">ตาราง Movement รับ-จ่ายน้ำมัน</h3>
+                <button onclick="exportToPDF()" class="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-sm flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-file-pdf"></i> Export PDF
+                </button>
+            </div>
+            
+            <!-- Wrapper for PDF Export -->
+            <div id="pdfExportArea" class="bg-white">
+                <div class="p-6 hidden" id="pdfHeader">
+                    <h2 class="text-xl font-bold text-center mb-2">รายงานสรุปการใช้น้ำมัน Forklift</h2>
+                    <p class="text-center text-sm text-gray-500 mb-4" id="pdfFilterInfo"></p>
+                </div>
+                
+                <div class="table-container overflow-x-auto max-h-[500px]">
+                    <table class="w-full text-sm text-left text-slate-600">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 whitespace-nowrap">วันที่เวลา</th>
+                                <th scope="col" class="px-6 py-3">รายการ</th>
+                                <th scope="col" class="px-6 py-3">ผู้เบิก (รถ/ผู้ทำรายการ)</th>
+                                <th scope="col" class="px-6 py-3 text-right">ยอดยกมา</th>
+                                <th scope="col" class="px-6 py-3 text-right font-bold text-indigo-600">จำนวน (ลิตร)</th>
+                                <th scope="col" class="px-6 py-3 text-right">คงเหลือ</th>
+                                <th scope="col" class="px-6 py-3">ผู้บันทึก</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <!-- Data rows will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- 1. State Management ---
+        let rawData = [];
+        let processedData = [];
+        let filteredData = [];
+        
+        let charts = {
+            monthly: null,
+            forklift: null,
+            ranking: null
+        };
+
+        // Multi-select state
+        let activeFilters = {
+            year: new Set(),
+            month: new Set(),
+            forklift: new Set()
+        };
+
+        const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
+        // ลบข้อมูลจำลองออก เริ่มต้นด้วยหน้าจอว่างเปล่า รอการอัปโหลด
+        const initialMockData = [];
+
+        // --- 2. Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initData(initialMockData);
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // File Upload Event
+            document.getElementById('fileUpload').addEventListener('change', handleFileUpload);
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.filter-dropdown')) {
+                    document.querySelectorAll('.filter-menu').forEach(m => m.classList.add('hidden'));
+                }
+            });
+        }
+
+        function toggleMenu(id) {
+            document.querySelectorAll('.filter-menu').forEach(menu => {
+                if (menu.id !== id) menu.classList.add('hidden');
+            });
+            const menu = document.getElementById(id);
+            menu.classList.toggle('hidden');
+        }
+
+        // --- 3. Data Processing ---
+        function initData(data) {
+            rawData = data;
+            
+            // Helper function: ป้องกันปัญหาตัวเลขที่มาจาก Excel แล้วมีเครื่องหมายลูกน้ำ (,) ติดมา
+            const parseNum = (val) => {
+                if (val === null || val === undefined || val === '') return NaN;
+                if (typeof val === 'number') return val;
+                return parseFloat(val.toString().replace(/,/g, '').trim());
+            };
+
+            // Format & Calculate necessary fields
+            processedData = rawData.map(row => {
+                // Normalize keys (remove trailing spaces if any from excel header)
+                const normRow = {};
+                for (let key in row) { normRow[key.trim()] = row[key]; }
+
+                let type = normRow['รายการ'] ? normRow['รายการ'].toString().trim() : '';
+                
+                // ข้ามแถวที่ไม่มีข้อมูล "รายการ" (ป้องกันแถวว่างท้ายไฟล์ Excel)
+                if (!type) return null;
+
+                let prev = parseNum(normRow['ยอดยกมา']) || 0;
+                let balance = parseNum(normRow['คงเหลือ']) || 0;
+                let id = parseInt(normRow['ID']) || 0;
+                
+                // 1. ดึงปริมาณจาก Column "จำนวน" ก่อน
+                let amount = parseNum(normRow['จำนวน']);
+                
+                // 2. ถ้ายอด "จำนวน" ไม่มี หรือเป็น 0 ให้คำนวณจาก Movement ตามสมการ (ป้องกันการติดลบด้วย Math.abs)
+                if (isNaN(amount) || amount <= 0) {
+                    amount = Math.abs(balance - prev) || 0;
+                }
+
+                // Date parsing (ตัดเวลาออก และจัดการฟอร์แมต DD/MM/YYYY หรือ YYYY-MM-DD อย่างละเอียด)
+                let dateStr = normRow['วันที่'] ? normRow['วันที่'].toString().trim() : '';
+                let onlyDateStr = dateStr.split(' ')[0]; // ตัดเวลา (ชั่วโมง:นาที) ออกตามที่คุณกฤษฏ์แนะนำ
+                let dateObj = new Date(NaN);
+
+                if (onlyDateStr) {
+                    let parts = onlyDateStr.includes('/') ? onlyDateStr.split('/') : onlyDateStr.split('-');
+                    if (parts.length === 3) {
+                        if (parts[0].length === 4) {
+                            // กรณีเป็น YYYY-MM-DD
+                            dateObj = new Date(`${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}T00:00:00`);
+                        } else if (parts[2].length === 4) {
+                            // กรณีเป็น DD/MM/YYYY (ต้องสลับตำแหน่งให้ Javascript เข้าใจ)
+                            dateObj = new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}T00:00:00`);
+                        } else {
+                            dateObj = new Date(onlyDateStr);
+                        }
+                    } else {
+                        dateObj = new Date(onlyDateStr);
+                    }
+                }
+                
+                let year = isNaN(dateObj.getTime()) ? 'N/A' : dateObj.getFullYear().toString();
+                let month = isNaN(dateObj.getTime()) ? -1 : dateObj.getMonth(); // 0-11
+                
+                // รูปแบบวันที่ที่จะนำไปโชว์ในตาราง (แสดงเฉพาะวันที่)
+                let formattedDate = isNaN(dateObj.getTime()) ? onlyDateStr : 
+                    `${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}/${dateObj.getFullYear()}`;
+
+                let rawForklift = normRow['ผู้เบิก'] ? normRow['ผู้เบิก'].toString().trim() : 'N/A';
+                let brand = normRow['ผู้เบิก: ยี่ห้อ'] ? normRow['ผู้เบิก: ยี่ห้อ'].toString().trim() : '';
+                let model = normRow['ผู้เบิก: รุ่น'] ? normRow['ผู้เบิก: รุ่น'].toString().trim() : '';
+                
+                // ตรวจสอบเงื่อนไขว่าเป็นรายการ ซื้อเข้า Stock หรือไม่
+                let isStock = (rawForklift === 'เติมน้ำมัน' || brand === 'XXX' || model === 'XXX' || type === 'รับ');
+                let forklift = isStock ? 'Stock (ซื้อเข้า)' : rawForklift;
+                
+                return {
+                    ...normRow,
+                    id: id,
+                    type: type,
+                    amount: amount,
+                    prevBalance: prev,
+                    currentBalance: balance,
+                    dateObj: dateObj,
+                    year: year,
+                    monthStr: month >= 0 ? monthNames[month] : 'N/A',
+                    monthIndex: month,
+                    formattedDate: formattedDate,
+                    forklift: forklift,
+                    isStock: isStock,
+                    person: normRow['ผู้เบิก2'] || '-'
+                };
+            }).filter(item => item !== null); // กรองแถวที่เป็น null ทิ้งไป
+
+            // Sort by Date descending AND ID (เพื่อไล่ Timeline การเคลื่อนไหวให้ถูกต้อง 100%)
+            processedData.sort((a, b) => b.id - a.id);
+
+            // รีเซ็ต Filter เมื่ออัปโหลดไฟล์ใหม่
+            activeFilters.year.clear();
+            activeFilters.month.clear();
+            activeFilters.forklift.clear();
+
+            updateFiltersOptions();
+            updateDashboard();
+
+            // แจ้งเตือนข้อความให้สอดคล้องกับสถานะข้อมูล
+            if (processedData.length > 0) {
+                let now = new Date();
+                document.getElementById('lastUpdateText').innerText = `ข้อมูลอัปเดตล่าสุด: ${now.toLocaleDateString('th-TH')} ${now.toLocaleTimeString('th-TH')}`;
+            } else {
+                document.getElementById('lastUpdateText').innerText = `กรุณาอัปโหลดไฟล์ Excel/CSV เพื่อแสดงข้อมูล`;
+            }
+        }
+
+        // --- 4. Filtering Logic ---
+        function updateFiltersOptions() {
+            // Extract unique values
+            const years = [...new Set(processedData.map(d => d.year).filter(y => y !== 'N/A'))].sort().reverse();
+            const forklifts = [...new Set(processedData.filter(d => !d.isStock && d.type === 'จ่าย').map(d => d.forklift))].sort();
+
+            const monthItems = monthNames.map((m, idx) => ({ value: idx.toString(), label: m }));
+            const yearItems = years.map(y => ({ value: y, label: `ปี ${y}` }));
+            const forkliftItems = forklifts.map(f => ({ value: f, label: f }));
+
+            renderCheckboxMenu('menu-year', 'lbl-year', yearItems, 'year', 'ทั้งหมด');
+            renderCheckboxMenu('menu-month', 'lbl-month', monthItems, 'month', 'ทั้งหมด');
+            renderCheckboxMenu('menu-forklift', 'lbl-forklift', forkliftItems, 'forklift', 'ทั้งหมด');
+        }
+
+        function renderCheckboxMenu(containerId, labelId, items, filterKey, defaultLabel) {
+            const container = document.getElementById(containerId);
+            const set = activeFilters[filterKey];
+            
+            let html = `
+                <label class="flex items-center p-2 hover:bg-slate-50 rounded cursor-pointer transition-colors group">
+                    <input type="checkbox" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mr-3"
+                        onchange="handleFilterChange('${filterKey}', 'all')" ${set.size === 0 ? 'checked' : ''}>
+                    <span class="text-sm text-slate-700 font-medium group-hover:text-indigo-600">เลือกทั้งหมด</span>
+                </label>
+                <div class="h-px bg-slate-100 my-1 mx-2"></div>
+            `;
+
+            items.forEach(item => {
+                html += `
+                    <label class="flex items-center p-2 hover:bg-slate-50 rounded cursor-pointer transition-colors group">
+                        <input type="checkbox" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mr-3"
+                            value="${item.value}" onchange="handleFilterChange('${filterKey}', this.value)" ${set.has(item.value) ? 'checked' : ''}>
+                        <span class="text-sm text-slate-700 group-hover:text-indigo-600">${item.label}</span>
+                    </label>
+                `;
+            });
+            container.innerHTML = html;
+            updateFilterLabel(labelId, set, defaultLabel, items);
+        }
+
+        function handleFilterChange(filterKey, value) {
+            const set = activeFilters[filterKey];
+            if (value === 'all') {
+                set.clear();
+            } else {
+                if (set.has(value)) set.delete(value);
+                else set.add(value);
+            }
+            updateFiltersOptions(); // Re-render checkmarks immediately
+            updateDashboard();      // Update data
+        }
+
+        function updateFilterLabel(labelId, set, defaultLabel, allItems) {
+            const labelEl = document.getElementById(labelId);
+            if (set.size === 0 || set.size === allItems.length) {
+                labelEl.innerText = defaultLabel;
+            } else if (set.size === 1) {
+                // Find label text for the single selected value
+                let selectedVal = Array.from(set)[0];
+                let item = allItems.find(i => i.value === selectedVal);
+                labelEl.innerText = item ? item.label : defaultLabel;
+            } else {
+                labelEl.innerText = `เลือก ${set.size} รายการ`;
+            }
+        }
+
+        function updateDashboard() {
+            filteredData = processedData.filter(d => {
+                let matchYear = activeFilters.year.size === 0 || activeFilters.year.has(d.year);
+                let matchMonth = activeFilters.month.size === 0 || activeFilters.month.has(d.monthIndex.toString());
+                let matchFork = activeFilters.forklift.size === 0 || activeFilters.forklift.has(d.forklift);
+                
+                // หากกรองเลือกรถเฉพาะคัน จะซ่อนรายการ Stock เข้าด้วย เพื่อให้เห็นเฉพาะยอดใช้งานของรถคันนั้น
+                if (activeFilters.forklift.size > 0 && d.isStock) return false;
+
+                return matchYear && matchMonth && matchFork;
+            });
+
+            updateSummaryCards();
+            renderCharts();
+            renderSummaryTable(); // <--- เรียกใช้ตารางสรุปรายเดือน
+            renderTable();
+        }
+
+        // --- 5. UI Updates ---
+        function updateSummaryCards() {
+            let sumIn = 0;
+            let sumOut = 0;
+            
+            filteredData.forEach(d => {
+                if (d.type === 'รับ') sumIn += d.amount;
+                if (d.type === 'จ่าย') sumOut += d.amount;
+            });
+
+            document.getElementById('sumReceive').innerText = sumIn.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('sumIssue').innerText = sumOut.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            // การหายอดคงเหลือล่าสุด: เป็นยอดของรายการล่าสุด "ในช่วงเวลาที่เรา Filter อยู่" 
+            // โดยประเมินเฉพาะจาก Filter เวลา ไม่สนใจว่าเลือกรถคันไหน เพื่อให้ได้ยอดในถังรวมที่แท้จริง
+            let timeFiltered = processedData.filter(d => {
+                let matchYear = activeFilters.year.size === 0 || activeFilters.year.has(d.year);
+                let matchMonth = activeFilters.month.size === 0 || activeFilters.month.has(d.monthIndex.toString());
+                return matchYear && matchMonth;
+            });
+
+            // timeFiltered ถูก sort โดย ID DESC มาแล้ว index 0 คือยอดล่าสุดเสมอ
+            let latestBalance = timeFiltered.length > 0 ? timeFiltered[0].currentBalance : 0;
+            document.getElementById('currentBalance').innerText = latestBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        // --- Render ตารางสรุปรายเดือน ---
+        function renderSummaryTable() {
+            const tbody = document.getElementById('summaryTableBody');
+            tbody.innerHTML = '';
+
+            const monthlyDataMap = {};
+            // สร้างคีย์ของ เดือน-ปี ที่ไม่ซ้ำกัน และเรียงจากล่าสุดไปเก่าสุด
+            let uniqueYearMonths = [...new Set(filteredData.map(d => {
+                if (d.year === 'N/A') return null;
+                return `${d.year}-${String(d.monthIndex).padStart(2,'0')}`;
+            }).filter(Boolean))].sort().reverse(); 
+            
+            uniqueYearMonths.forEach(ym => {
+                monthlyDataMap[ym] = { in: 0, out: 0, label: '', balance: null };
+            });
+
+            filteredData.forEach(d => {
+                if(d.year === 'N/A') return;
+                let key = `${d.year}-${String(d.monthIndex).padStart(2,'0')}`;
+                monthlyDataMap[key].label = `${d.monthStr} ${d.year}`;
+                if(d.type === 'รับ') monthlyDataMap[key].in += d.amount;
+                if(d.type === 'จ่าย') monthlyDataMap[key].out += d.amount;
+                
+                // เนื่องจากข้อมูล (filteredData) เรียงจากวันที่ใหม่สุดไปเก่าสุด 
+                // ค่า currentBalance อันแรกที่เจอในแต่ละเดือน คือ "ยอดยกไป (คงเหลือสิ้นเดือน)" ของเดือนนั้น
+                if(monthlyDataMap[key].balance === null) {
+                    monthlyDataMap[key].balance = d.currentBalance;
+                }
+            });
+
+            if (uniqueYearMonths.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-slate-500">ไม่มีข้อมูลในเงื่อนไขที่เลือก</td></tr>`;
+                return;
+            }
+
+            uniqueYearMonths.forEach(key => {
+                let data = monthlyDataMap[key];
+                let tr = document.createElement('tr');
+                tr.className = "bg-white border-b hover:bg-slate-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-medium text-slate-800">${data.label}</td>
+                    <td class="px-6 py-4 text-right font-bold text-emerald-600 bg-emerald-50/30">${data.in.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                    <td class="px-6 py-4 text-right font-bold text-rose-600 bg-rose-50/30">${data.out.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                    <td class="px-6 py-4 text-right font-bold text-blue-600 bg-blue-50/30">${data.balance !== null ? data.balance.toLocaleString('en-US', {minimumFractionDigits: 1}) : '0.0'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            // Add Total Row
+            let totalIn = Object.values(monthlyDataMap).reduce((sum, item) => sum + item.in, 0);
+            let totalOut = Object.values(monthlyDataMap).reduce((sum, item) => sum + item.out, 0);
+            
+            // ยอดคงเหลือล่าสุดของทั้งหมดคือยอดของเดือนล่าสุดที่แสดงผล
+            let latestBalance = uniqueYearMonths.length > 0 ? monthlyDataMap[uniqueYearMonths[0]].balance : 0;
+
+            let trTotal = document.createElement('tr');
+            trTotal.className = "bg-slate-100 font-bold text-slate-800 border-t-2 border-slate-300";
+            trTotal.innerHTML = `
+                <td class="px-6 py-4 text-right">รวมทั้งหมด</td>
+                <td class="px-6 py-4 text-right text-emerald-600">${totalIn.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                <td class="px-6 py-4 text-right text-rose-600">${totalOut.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                <td class="px-6 py-4 text-right text-blue-600">${latestBalance !== null ? latestBalance.toLocaleString('en-US', {minimumFractionDigits: 1}) : '0.0'}</td>
+            `;
+            tbody.appendChild(trTotal);
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            filteredData.forEach(d => {
+                let isReceive = d.type === 'รับ';
+                
+                let badgeClass = isReceive 
+                    ? 'bg-emerald-100 text-emerald-800' 
+                    : 'bg-rose-100 text-rose-800';
+                
+                let icon = isReceive ? '<i class="fa-solid fa-arrow-down mr-1"></i>' : '<i class="fa-solid fa-arrow-up mr-1"></i>';
+
+                let tr = document.createElement('tr');
+                tr.className = "bg-white border-b hover:bg-slate-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${d.formattedDate}</td>
+                    <td class="px-6 py-4">
+                        <span class="${badgeClass} text-xs font-medium px-2.5 py-1 rounded-full border border-transparent">
+                            ${icon} ${d.type}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 font-medium ${isReceive ? 'text-slate-500' : 'text-slate-800'}">${d.forklift}</td>
+                    <td class="px-6 py-4 text-right">${d.prevBalance.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                    <td class="px-6 py-4 text-right font-bold text-indigo-600 bg-indigo-50/30">${d.amount.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                    <td class="px-6 py-4 text-right font-medium">${d.currentBalance.toLocaleString('en-US', {minimumFractionDigits: 1})}</td>
+                    <td class="px-6 py-4 text-xs text-slate-500">${d.person}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // --- 6. Charts Rendering ---
+        function renderCharts() {
+            // Data Prep for Monthly Chart
+            const monthlyDataMap = {};
+            // Init map for sorted months
+            let uniqueYearMonths = [...new Set(filteredData.map(d => `${d.year}-${String(d.monthIndex).padStart(2,'0')}`))].sort();
+            
+            uniqueYearMonths.forEach(ym => {
+                monthlyDataMap[ym] = { in: 0, out: 0, label: '' };
+            });
+
+            filteredData.forEach(d => {
+                if(d.year === 'N/A') return;
+                let key = `${d.year}-${String(d.monthIndex).padStart(2,'0')}`;
+                monthlyDataMap[key].label = `${d.monthStr} ${d.year}`;
+                if(d.type === 'รับ') monthlyDataMap[key].in += d.amount;
+                if(d.type === 'จ่าย') monthlyDataMap[key].out += d.amount;
+            });
+
+            const labels = Object.keys(monthlyDataMap).map(k => monthlyDataMap[k].label);
+            const inData = Object.keys(monthlyDataMap).map(k => monthlyDataMap[k].in);
+            const outData = Object.keys(monthlyDataMap).map(k => monthlyDataMap[k].out);
+
+            // Render Monthly Bar Chart
+            if (charts.monthly) charts.monthly.destroy();
+            const ctxMonthly = document.getElementById('monthlyChart').getContext('2d');
+            charts.monthly = new Chart(ctxMonthly, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'รับน้ำมัน (ลิตร)', data: inData, backgroundColor: '#10b981', borderRadius: 4 },
+                        { label: 'จ่าย/ใช้ (ลิตร)', data: outData, backgroundColor: '#f43f5e', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { font: { family: 'Prompt' } } }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [4, 4] } }
+                    }
+                }
+            });
+
+            // Data Prep for Forklift Chart (Only 'จ่าย' and NOT Stock)
+            const forkliftMap = {};
+            filteredData.filter(d => d.type === 'จ่าย' && !d.isStock).forEach(d => {
+                forkliftMap[d.forklift] = (forkliftMap[d.forklift] || 0) + d.amount;
+            });
+
+            const forkLabels = Object.keys(forkliftMap);
+            const forkData = Object.values(forkliftMap);
+            
+            // Generate some colors
+            const colors = ['#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#8b5cf6', '#d946ef', '#f43f5e', '#f97316'];
+
+            // Render Forklift Doughnut Chart
+            if (charts.forklift) charts.forklift.destroy();
+            const ctxForklift = document.getElementById('forkliftChart').getContext('2d');
+            charts.forklift = new Chart(ctxForklift, {
+                type: 'doughnut',
+                data: {
+                    labels: forkLabels,
+                    datasets: [{
+                        data: forkData,
+                        backgroundColor: colors.slice(0, forkLabels.length),
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'right', labels: { font: { family: 'Prompt' }, usePointStyle: true, boxWidth: 8 } }
+                    }
+                }
+            });
+
+            // Data Prep for Ranking Chart
+            // นำข้อมูลจาก forkliftMap มาจัดเรียงจากมากไปน้อย
+            const sortedForklifts = Object.keys(forkliftMap)
+                .map(key => ({ label: key, value: forkliftMap[key] }))
+                .sort((a, b) => b.value - a.value);
+
+            const rankingLabels = sortedForklifts.map(item => item.label);
+            const rankingData = sortedForklifts.map(item => item.value);
+
+            // Render Ranking Horizontal Bar Chart
+            if (charts.ranking) charts.ranking.destroy();
+            const ctxRanking = document.getElementById('rankingChart').getContext('2d');
+            charts.ranking = new Chart(ctxRanking, {
+                type: 'bar',
+                data: {
+                    labels: rankingLabels,
+                    datasets: [{
+                        label: 'ปริมาณใช้น้ำมัน (ลิตร)',
+                        data: rankingData,
+                        backgroundColor: '#8b5cf6', // สีม่วงเข้มสำหรับ Ranking
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // เปลี่ยนกราฟเป็นแนวนอน
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }, // ซ่อน Legend เพราะมีชื่อบอกที่แกนแล้ว
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' ' + context.parsed.x.toLocaleString('en-US', {minimumFractionDigits: 1}) + ' ลิตร';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, grid: { borderDash: [4, 4] } },
+                        y: { grid: { display: false }, ticks: { font: { family: 'Prompt' } } }
+                    }
+                }
+            });
+        }
+
+        // --- 7. File Handling (SheetJS) ---
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Simple loading alert
+            Swal.fire({
+                title: 'กำลังประมวลผล...',
+                text: 'กรุณารอสักครู่ ยุพินกำลังอ่านไฟล์ค่ะ',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    
+                    // Assume first sheet
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Convert to JSON
+                    const json = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd hh:mm:ss' });
+                    
+                    if(json.length > 0) {
+                        initData(json);
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'อัปโหลดสำเร็จ!',
+                            text: `ยุพินนำเข้าข้อมูล ${json.length} รายการเรียบร้อยค่ะ`,
+                            confirmButtonColor: '#4f46e5'
+                        });
+                    } else {
+                        throw new Error("ไม่พบข้อมูลในไฟล์");
+                    }
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'เกิดข้อผิดพลาด',
+                        text: 'ไม่สามารถอ่านไฟล์ได้ โปรดตรวจสอบว่าโครงสร้างตรงกับรูปแบบเดิมค่ะ',
+                        confirmButtonColor: '#4f46e5'
+                    });
+                }
+                // Reset file input
+                document.getElementById('fileUpload').value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- 8. Export to PDF (html2pdf) ---
+        function exportSummaryToPDF() {
+            const pdfHeader = document.getElementById('pdfSummaryHeader');
+            const pdfFilterInfo = document.getElementById('pdfSummaryFilterInfo');
+            
+            let fYear = document.getElementById('lbl-year').innerText;
+            let fMonth = document.getElementById('lbl-month').innerText;
+            let fFork = document.getElementById('lbl-forklift').innerText;
+            
+            pdfFilterInfo.innerText = `เงื่อนไข: ปี(${fYear}) | เดือน(${fMonth}) | รถ(${fFork}) \n (ออกรายงานเมื่อ: ${new Date().toLocaleString('th-TH')})`;
+            
+            pdfHeader.classList.remove('hidden');
+            
+            const element = document.getElementById('pdfSummaryArea');
+            const container = element.querySelector('.table-container');
+            const thead = element.querySelector('thead');
+            
+            // Fix blank PDF issue: reset scroll and remove overflow/sticky constraints
+            window.scrollTo(0, 0);
+            if(container) container.classList.remove('overflow-x-auto');
+            if(thead) thead.classList.remove('sticky', 'top-0', 'z-10');
+            
+            const opt = {
+                margin:       10,
+                filename:     `Fuel_Monthly_Summary_${new Date().getTime()}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            Swal.fire({
+                title: 'กำลังสร้างไฟล์ PDF สรุปรายเดือน...',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                pdfHeader.classList.add('hidden');
+                
+                // Revert DOM changes back to normal
+                if(container) container.classList.add('overflow-x-auto');
+                if(thead) thead.classList.add('sticky', 'top-0', 'z-10');
+                
+                Swal.close();
+            });
+        }
+
+        function exportToPDF() {
+            // Show header for PDF
+            const pdfHeader = document.getElementById('pdfHeader');
+            const pdfFilterInfo = document.getElementById('pdfFilterInfo');
+            
+            let fYear = document.getElementById('lbl-year').innerText;
+            let fMonth = document.getElementById('lbl-month').innerText;
+            let fFork = document.getElementById('lbl-forklift').innerText;
+            
+            pdfFilterInfo.innerText = `เงื่อนไข: ปี(${fYear}) | เดือน(${fMonth}) | รถ(${fFork}) \n (ออกรายงานเมื่อ: ${new Date().toLocaleString('th-TH')})`;
+            
+            pdfHeader.classList.remove('hidden');
+            
+            const element = document.getElementById('pdfExportArea');
+            const container = element.querySelector('.table-container');
+            const thead = element.querySelector('thead');
+            
+            // Fix blank PDF issue: reset scroll and remove overflow/sticky constraints
+            window.scrollTo(0, 0);
+            if(container) {
+                container.classList.remove('overflow-x-auto');
+                container.classList.remove('max-h-[500px]');
+            }
+            if(thead) thead.classList.remove('sticky', 'top-0', 'z-10');
+            
+            const opt = {
+                margin:       10,
+                filename:     `Fuel_Report_${new Date().getTime()}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // Loading state
+            Swal.fire({
+                title: 'กำลังสร้างไฟล์ PDF...',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Revert DOM changes back to normal
+                pdfHeader.classList.add('hidden');
+                if(container) {
+                    container.classList.add('overflow-x-auto');
+                    container.classList.add('max-h-[500px]');
+                }
+                if(thead) thead.classList.add('sticky', 'top-0', 'z-10');
+                
+                Swal.close();
+            });
+        }
+    </script>
+</body>
+</html>
