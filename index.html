@@ -229,11 +229,11 @@
                             <tr>
                                 <th scope="col" class="px-6 py-3 whitespace-nowrap">วันที่เวลา</th>
                                 <th scope="col" class="px-6 py-3">รายการ</th>
-                                <th scope="col" class="px-6 py-3">ผู้เบิก (รถ/ผู้ทำรายการ)</th>
+                                <th scope="col" class="px-6 py-3">หมายเลขรถ</th>
                                 <th scope="col" class="px-6 py-3 text-right">ยอดยกมา</th>
                                 <th scope="col" class="px-6 py-3 text-right font-bold text-indigo-600">จำนวน (ลิตร)</th>
                                 <th scope="col" class="px-6 py-3 text-right">คงเหลือ</th>
-                                <th scope="col" class="px-6 py-3">ผู้บันทึก</th>
+                                <th scope="col" class="px-6 py-3">ผู้เบิก/เติม</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody">
@@ -361,7 +361,8 @@
                 let formattedDate = isNaN(dateObj.getTime()) ? onlyDateStr : 
                     `${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}/${dateObj.getFullYear()}`;
 
-                let rawForklift = normRow['ผู้เบิก'] ? normRow['ผู้เบิก'].toString().trim() : 'N/A';
+                // อัปเดตชื่อ Column ให้รองรับโครงสร้างไฟล์ใหม่ (และยังเผื่อไฟล์เก่าไว้)
+                let rawForklift = normRow['หมายเลขรถ'] ? normRow['หมายเลขรถ'].toString().trim() : (normRow['ผู้เบิก'] ? normRow['ผู้เบิก'].toString().trim() : 'N/A');
                 let brand = normRow['ผู้เบิก: ยี่ห้อ'] ? normRow['ผู้เบิก: ยี่ห้อ'].toString().trim() : '';
                 let model = normRow['ผู้เบิก: รุ่น'] ? normRow['ผู้เบิก: รุ่น'].toString().trim() : '';
                 
@@ -383,7 +384,7 @@
                     formattedDate: formattedDate,
                     forklift: forklift,
                     isStock: isStock,
-                    person: normRow['ผู้เบิก2'] || '-'
+                    person: normRow['ผู้เบิก/เติม'] ? normRow['ผู้เบิก/เติม'].toString().trim() : (normRow['ผู้เบิก2'] ? normRow['ผู้เบิก2'].toString().trim() : '-')
                 };
             }).filter(item => item !== null); // กรองแถวที่เป็น null ทิ้งไป
 
